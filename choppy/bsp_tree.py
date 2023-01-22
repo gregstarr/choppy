@@ -8,9 +8,9 @@ from pathlib import Path
 import numpy as np
 from trimesh import Trimesh, load
 
-from pychop3d import objective_functions, settings, utils
-from pychop3d.bsp_node import BSPNode, Plane, split
-from pychop3d.logger import logger
+from choppy import objective_functions, settings, utils
+from choppy.bsp_node import BSPNode, Plane, split
+from choppy.logger import logger
 
 
 class BSPTree:

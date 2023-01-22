@@ -6,8 +6,8 @@ from shapely.geometry import MultiPoint, Point, Polygon
 from trimesh import Trimesh, transform_points
 from trimesh.creation import triangulate_polygon
 
-from pychop3d import settings, utils, bsp_node, connector as _conn
-from pychop3d.logger import logger
+from choppy import settings, utils, bsp_node, connector as _conn
+from choppy.logger import logger
 
 
 class ConnectedComponentError(Exception):

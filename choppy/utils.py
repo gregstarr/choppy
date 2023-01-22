@@ -6,7 +6,7 @@ import numpy as np
 import trimesh
 from trimesh import Trimesh
 
-from pychop3d import bsp_tree
+from choppy import bsp_tree
 
 
 def load_connector_configuration(tree_file: Path) -> np.ndarray:

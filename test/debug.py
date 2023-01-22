@@ -4,8 +4,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 import trimesh
-from pychop3d import settings, utils, bsp_node
-from pychop3d.main import run
+from choppy import settings, utils, bsp_node
+from choppy.main import run
 
 
 with tempfile.TemporaryDirectory() as tmpdir:

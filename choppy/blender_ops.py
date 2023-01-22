@@ -5,7 +5,7 @@ from trimesh import Trimesh, util
 from trimesh.interfaces.blender import _blender_executable, exists
 from trimesh.interfaces.generic import MeshScript
 
-from pychop3d.logger import logger
+from choppy.logger import logger
 
 
 def run_blender_op(mesh: Trimesh, func_str: str, debug: bool = True):

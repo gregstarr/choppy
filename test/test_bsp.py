@@ -4,10 +4,10 @@ import copy
 from pathlib import Path
 import pytest
 
-from pychop3d.bsp_tree import BSPTree, get_planes, expand_node
-from pychop3d.bsp_node import split, Plane
-from pychop3d.section import CrossSection
-from pychop3d import utils, settings
+from choppy.bsp_tree import BSPTree, get_planes, expand_node
+from choppy.bsp_node import split, Plane
+from choppy.section import CrossSection
+from choppy import utils, settings
 
 
 def test_get_planes(bunny_mesh):

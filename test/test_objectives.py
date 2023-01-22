@@ -4,8 +4,8 @@ import numpy as np
 import pytest
 import trimesh
 
-from pychop3d import bsp_tree, objective_functions, settings
-from pychop3d.bsp_node import Plane
+from choppy import bsp_tree, objective_functions, settings
+from choppy.bsp_node import Plane
 
 
 def test_number_of_parts():

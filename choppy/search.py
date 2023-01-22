@@ -4,10 +4,10 @@ from pathlib import Path
 import numpy as np
 from trimesh import Trimesh
 
-from pychop3d import settings
-from pychop3d.bsp_node import BSPNode
-from pychop3d.bsp_tree import BSPTree, process_normal
-from pychop3d.logger import logger, progress
+from choppy import settings
+from choppy.bsp_node import BSPNode
+from choppy.bsp_tree import BSPTree, process_normal
+from choppy.logger import logger, progress
 
 
 def all_at_goal(trees: list[BSPTree]) -> bool:

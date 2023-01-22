@@ -1,5 +1,5 @@
 """
-pychop3d - cli model chop utility
+choppy - cli model chop utility
 """
 from __future__ import annotations
 import logging
@@ -11,15 +11,15 @@ from pathlib import Path
 import numpy as np
 import trimesh
 
-from pychop3d import connector, settings, utils
-from pychop3d.blender_ops import decimate
-from pychop3d.bsp_tree import BSPTree, open_tree, separate_starter
-from pychop3d.logger import logger
-from pychop3d.search import beam_search
+from choppy import connector, settings, utils
+from choppy.blender_ops import decimate
+from choppy.bsp_tree import BSPTree, open_tree, separate_starter
+from choppy.logger import logger
+from choppy.search import beam_search
 
 
 def run(meshpath: Path, printer_extents: np.ndarray, name: str, output_directory: Path):
-    """Complete Pychop3D process, including the beam search for the optimal cutting
+    """Complete choppy process, including the beam search for the optimal cutting
     planes, determining the connector locations, adding the connectors to the part
     meshes, then saving the STLs, the tree json and the configuration file.
 
@@ -102,7 +102,7 @@ def main():
     # Read mesh filepath from argument
     import argparse  # pylint: disable=import-outside-toplevel
 
-    parser = argparse.ArgumentParser(description="Pychop3D command line runner")
+    parser = argparse.ArgumentParser(description="choppy command line runner")
     parser.add_argument("mesh", type=str)
     parser.add_argument("printer_x", type=float)
     parser.add_argument("printer_y", type=float)

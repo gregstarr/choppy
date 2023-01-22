@@ -3,8 +3,8 @@ from __future__ import annotations
 import numpy as np
 from trimesh import Trimesh
 
-from pychop3d import settings, bsp_tree
-from pychop3d.logger import logger
+from choppy import settings, bsp_tree
+from choppy.logger import logger
 
 
 def evaluate_nparts_objective(trees: list[bsp_tree.BSPTree], path: tuple):

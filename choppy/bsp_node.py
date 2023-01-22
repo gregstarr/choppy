@@ -5,8 +5,8 @@ import numpy as np
 from trimesh import Trimesh
 from trimesh.transformations import angle_between_vectors
 
-from pychop3d.logger import logger
-from pychop3d import settings, section
+from choppy.logger import logger
+from choppy import settings, section
 
 
 class ConvexHullError(Exception):

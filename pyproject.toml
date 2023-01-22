@@ -1,16 +1,16 @@
 [tool.poetry]
-name = "pychop3d"
+name = "choppy"
 version = "0.1.0"
 description = "Chop 3d models to fit your printer"
 authors = ["Greg Starr <gregstarr2@gmail.com>"]
 license = "MIT"
 readme = "README.md"
-homepage = "https://pychop.xyz/"
-repository = "https://github.com/gregstarr/pychop3d"
+homepage = "https://choppy.tools/"
+repository = "https://github.com/gregstarr/choppy"
 
 [tool.poetry.dependencies]
 python = "^3.10"
-trimesh = {extras = ["all"], version = "^3.18.0"}
+trimesh = {extras = ["all"], version = "^3.18.1"}
 
 [tool.poetry.group.test.dependencies]
 matplotlib = "^3.6.3"
@@ -20,7 +20,7 @@ black = "^22.12.0"
 isort = "^5.11.4"
 
 [tool.poetry.scripts]
-pychop = "pychop3d.main:main"
+choppy = "choppy.main:main"
 
 [build-system]
 requires = ["poetry-core"]

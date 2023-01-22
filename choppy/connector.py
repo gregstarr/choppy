@@ -3,8 +3,8 @@ import numpy as np
 from trimesh import Trimesh
 from trimesh.primitives import Sphere
 
-from pychop3d import settings, utils, bsp_tree
-from pychop3d.logger import logger, progress
+from choppy import settings, utils, bsp_tree
+from choppy.logger import logger, progress
 
 
 connector_t = np.dtype(
