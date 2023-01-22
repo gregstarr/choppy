@@ -1,1 +1,1 @@
-# coppy: Partitioning Models into 3D-Printable Parts
+# Choppy: Partitioning Models into 3D-Printable Parts
