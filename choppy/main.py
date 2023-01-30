@@ -10,6 +10,7 @@ from pathlib import Path
 
 import numpy as np
 import trimesh
+from trimesh.interfaces.blender import exists
 
 from choppy import connector, settings, utils
 from choppy.blender_ops import decimate
@@ -136,6 +137,8 @@ def main():
     logger.info("printer dims: %s", printer_extents)
     logger.info("name: %s", args.name)
 
+    assert(exists, "blender executable not found")
+    logger.info("blender executable found")
     try:
         run(meshpath, printer_extents, args.name, output_directory)
     except Exception as exc:
