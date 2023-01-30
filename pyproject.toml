@@ -11,6 +11,8 @@ repository = "https://github.com/gregstarr/choppy"
 [tool.poetry.dependencies]
 python = "^3.10"
 trimesh = {extras = ["all"], version = "^3.18.1"}
+commitizen = "^2.40.0"
+pre-commit = "^3.0.2"
 
 [tool.poetry.group.test.dependencies]
 matplotlib = "^3.6.3"
@@ -22,6 +24,11 @@ isort = "^5.11.4"
 [tool.poetry.scripts]
 choppy = "choppy.main:main"
 
+
+[tool.commitizen]
+name = "cz_conventional_commits"
+version = "0.0.1"
+tag_format = "$version"
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"

@@ -136,4 +136,8 @@ def main():
     logger.info("printer dims: %s", printer_extents)
     logger.info("name: %s", args.name)
 
-    run(meshpath, printer_extents, args.name, output_directory)
+    try:
+        run(meshpath, printer_extents, args.name, output_directory)
+    except Exception as exc:
+        logger.error("$ERROR %s", exc)
+        raise exc
