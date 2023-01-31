@@ -9,17 +9,19 @@ homepage = "https://choppy.tools/"
 repository = "https://github.com/gregstarr/choppy"
 
 [tool.poetry.dependencies]
-python = "^3.10"
+python = "~3.8"
 trimesh = {extras = ["all"], version = "^3.18.1"}
-commitizen = "^2.40.0"
-pre-commit = "^3.0.2"
+pyembree = "^0.2.11"
+numba = "^0.56.4"
 
 [tool.poetry.group.test.dependencies]
 matplotlib = "^3.6.3"
 pytest = "^7.2.1"
-pylint = "^2.15.10"
 black = "^22.12.0"
-isort = "^5.11.4"
+commitizen = "^2.40.0"
+pre-commit = "^3.0.2"
+snakeviz = "^2.1.1"
+ruff = "^0.0.238"
 
 [tool.poetry.scripts]
 choppy = "choppy.main:main"
@@ -33,5 +35,8 @@ tag_format = "$version"
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
-[tool.pylint.format]
-max-line-length = 88
+[tool.ruff]
+line-length = 88
+select = ["E", "W", "F", "N", "I", "B", "A", "TRY"]
+fix = true
+target-version = "py38"

@@ -2,8 +2,8 @@
 choppy - cli model chop utility
 """
 from __future__ import annotations
+
 import logging
-import sys
 import time
 import warnings
 from pathlib import Path
@@ -46,21 +46,16 @@ def run(meshpath: Path, printer_extents: np.ndarray, name: str, output_directory
     # create connector placer object, this creates all potential connectors and
     # determines their collisions
     connector_placer = connector.ConnectorPlacer(tree)
-    if connector_placer.n_connectors > 0:
-        # use simulated annealing to determine the best combination of connectors
-        state = connector_placer.simulated_annealing_connector_placement()
-        # save the final tree including the state
-        tree.save(output_directory / "final_tree_with_connectors.json", state)
-        # add the connectors / subtract the slots from the parts of the partitioned
-        # input object
-        original_tree = open_tree(
-            output_directory / "final_tree.json", meshpath, printer_extents
-        )
-        tree = connector_placer.insert_connectors(original_tree, state, printer_extents)
-    else:
-        tree = open_tree(
-            output_directory / "final_tree.json", meshpath, printer_extents
-        )
+    # use simulated annealing to determine the best combination of connectors
+    state = connector_placer.simulated_annealing_connector_placement()
+    # save the final tree including the state
+    tree.save(output_directory / "final_tree_with_connectors.json", state)
+    # add the connectors / subtract the slots from the parts of the partitioned
+    # input object
+    original_tree = open_tree(
+        output_directory / "final_tree.json", meshpath, printer_extents
+    )
+    tree = connector_placer.insert_connectors(original_tree, state, printer_extents)
 
     # export the parts of the partitioned object
     tree.export_stls(output_directory, name)
@@ -77,7 +72,7 @@ def prepare_starter(mesh_fn: Path, printer_extents) -> BSPTree:
         BSPTree: starter
     """
     # open the input mesh as the starter
-    starter = trimesh.load(mesh_fn)
+    starter = trimesh.load(mesh_fn, use_pyembree=True)
     utils.trimesh_repair(starter)
     n_faces = len(starter.faces)
     n_verts = len(starter.vertices)
@@ -102,6 +97,9 @@ def main():
     warnings.filterwarnings("ignore")
     # Read mesh filepath from argument
     import argparse  # pylint: disable=import-outside-toplevel
+    import sys  # pylint: disable=import-outside-toplevel
+
+    logger.info("Choppy called with command: %s", sys.argv)
 
     parser = argparse.ArgumentParser(description="choppy command line runner")
     parser.add_argument("mesh", type=str)
@@ -137,10 +135,10 @@ def main():
     logger.info("printer dims: %s", printer_extents)
     logger.info("name: %s", args.name)
 
-    assert(exists, "blender executable not found")
+    assert exists, "blender executable not found"
     logger.info("blender executable found")
     try:
         run(meshpath, printer_extents, args.name, output_directory)
     except Exception as exc:
-        logger.error("$ERROR %s", exc)
-        raise exc
+        logger.exception("$ERROR %s", exc)
+        raise

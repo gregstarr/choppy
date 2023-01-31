@@ -1,18 +1,16 @@
 from __future__ import annotations
+
 from typing import NamedTuple
 
 import numpy as np
 from trimesh import Trimesh
-from trimesh.transformations import angle_between_vectors
+from trimesh.transformations import angle_between_vectors, random_rotation_matrix
 
-from choppy.logger import logger
-from choppy import settings, section
+from choppy import section, settings
 
 
 class ConvexHullError(Exception):
     """Convex hull error"""
-
-
 class LowVolumeError(Exception):
     """low volume"""
 
@@ -22,6 +20,12 @@ class Plane(NamedTuple):
 
     origin: np.ndarray
     normal: np.ndarray
+
+
+class OrientedBoundingBox(NamedTuple):
+    vectors: np.ndarray
+    extents: np.ndarray
+    volume: np.ndarray
 
 
 class BSPNode:
@@ -64,11 +68,12 @@ class BSPNode:
             self.printer_extents = parent.printer_extents
         else:
             self.printer_extents = printer_extents
+        self.obb = self._get_obb()
         # determine n_parts and termination status
         self.n_parts = np.prod(
-            np.ceil(self.obb.primitive.extents / self.printer_extents)
+            np.ceil(self.obb.extents / self.printer_extents)
         )
-        self.terminated = np.all(self.obb.primitive.extents <= self.printer_extents)
+        self.terminated = np.all(self.obb.extents <= self.printer_extents)
         # if this isn't the root node
         if self.parent is not None:
             self.path = (*self.parent.path, num)
@@ -76,20 +81,13 @@ class BSPNode:
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}({self.path=})"
 
-    @property
-    def obb(self) -> Trimesh:
-        """oriented bounding box
-
-        Raises:
-            ConvexHullError
-
-        Returns:
-            Trimesh
-        """
-        try:
-            return self.part.bounding_box_oriented
-        except Exception as exc:
-            raise ConvexHullError("OBB failed") from exc
+    def _get_obb(self):
+        rotations = random_rotation_matrix(num=100)[:, :3, :3]
+        projections = np.matmul(self.part.vertices, rotations)
+        extents = projections.max(axis=1) - projections.min(axis=1)
+        volumes = np.prod(extents, axis=1)
+        idx = np.argmin(volumes)
+        return OrientedBoundingBox(rotations[idx], extents[idx], volumes[idx])
 
     @property
     def auxiliary_normals(self) -> np.ndarray:
@@ -99,8 +97,7 @@ class BSPNode:
         Returns:
             np.ndarray
         """
-        obb_xform = np.array(self.obb.primitive.transform)
-        return obb_xform[:3, :3]
+        return self.obb.vectors
 
     @property
     def connection_objective(self) -> float:

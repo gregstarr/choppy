@@ -8,11 +8,15 @@ from trimesh.interfaces.generic import MeshScript
 from choppy.logger import logger
 
 
+class BlenderNotAvailableError(Exception):
+    ...
+
+
 def run_blender_op(mesh: Trimesh, func_str: str, debug: bool = True):
     """Run a preprocess operation with mesh using Blender."""
     logger.info("starting preprocessing")
     if not exists:
-        raise ValueError('No blender available!')
+        raise BlenderNotAvailableError()
 
     curr_dir = Path(__file__).parent
     script_fn = curr_dir / "blender_template.py.template"

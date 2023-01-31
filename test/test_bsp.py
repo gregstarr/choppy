@@ -1,13 +1,13 @@
-import trimesh
-import numpy as np
 import copy
 from pathlib import Path
-import pytest
 
-from choppy.bsp_tree import BSPTree, get_planes, expand_node
-from choppy.bsp_node import split, Plane
+import numpy as np
+import trimesh
+
+from choppy import settings
+from choppy.bsp_node import Plane, split
+from choppy.bsp_tree import BSPTree, expand_node, get_planes
 from choppy.section import CrossSection
-from choppy import utils, settings
 
 
 def test_get_planes(bunny_mesh):

@@ -1,10 +1,9 @@
 import os
 
 import numpy as np
-import pytest
 import trimesh
 
-from choppy import bsp_tree, objective_functions, settings
+from choppy import bsp_tree, objective_functions
 from choppy.bsp_node import Plane
 
 

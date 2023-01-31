@@ -1,30 +1,53 @@
 """Cross section and connected component"""
 from __future__ import annotations
+
 import numpy as np
+from scipy.spatial import ConvexHull
+from shapely import contains_xy
 from shapely.affinity import rotate
-from shapely.geometry import MultiPoint, Point, Polygon
+from shapely.geometry import Polygon
 from trimesh import Trimesh, transform_points
 from trimesh.creation import triangulate_polygon
 
-from choppy import settings, utils, bsp_node, connector as _conn
+from choppy import bsp_node, settings, utils
 from choppy.logger import logger
 
 
 class ConnectedComponentError(Exception):
-    ...
-
+    def __init__(self) -> None:
+        super().__init__("no valid connector sites")
+class CcTooSmallError(Exception):
+    def __init__(self) -> None:
+        super().__init__("connected component area too small")
 
 class CrossSectionError(Exception):
-    ...
+    variants = [
+        "split lost a part",
+        "plane missed part",
+        "cc missing part",
+        "part missing cc"
+    ]
+    def __init__(self, var) -> None:
+        """variants = 
+        [
+            "split lost a part",
+            "plane missed part",
+            "cc missing part",
+            "part missing cc"
+        ]
+        """
+        super().__init__(self.variants[var])
 
 
 connector_spec = np.dtype(
     [
-        ("center", np.float32, (3, )),
-        ("radius", np.float32, (1, )),
-        ("center_2d", np.float32, (2, )),
+        ("center", np.float32, (3,)),
+        ("radius", np.float32, ),
+        ("center_2d", np.float32, (2,)),
     ]
 )
+
+min_cc_area = 4 * np.pi * (min(settings.CONNECTOR_SIZES) / 2) ** 2
 
 
 class ConnectedComponent:
@@ -49,6 +72,9 @@ class ConnectedComponent:
         self.positive = None
         self.negative = None
 
+        if self.area < min_cc_area:
+            raise CcTooSmallError()
+
         self.connectors = self._get_connectors(mesh, xform)
         self.objective = self._get_objective()
 
@@ -59,7 +85,7 @@ class ConnectedComponent:
         self.mesh = Trimesh(verts, faces)
         self.a_point = self.mesh.sample(1)[0]
 
-    def _get_connectors(self, mesh, xform):
+    def _get_connectors(self, mesh: Trimesh, xform: np.ndarray):
         connectors = []
         for diameter in settings.CONNECTOR_SIZES:
             radius = diameter / 2
@@ -78,13 +104,15 @@ class ConnectedComponent:
             if valid_mask.sum() == 0:
                 continue
             cdata = [
-                (center, radius, center_2d) for center, center_2d in 
-                zip(mesh_samples[valid_mask], plane_samples[valid_mask])
+                (center, radius, center_2d)
+                for center, center_2d in zip(
+                    mesh_samples[valid_mask], plane_samples[valid_mask]
+                )
             ]
             connectors.append(np.array(cdata, dtype=connector_spec))
         if len(connectors) == 0:
-            logger.info("no valid connector sites")
-            raise ConnectedComponentError("no valid connector sites")
+            logger.info("no valid connector sites, cc area: %s", self.area)
+            raise ConnectedComponentError()
         connectors = np.concatenate(connectors)
         return connectors
 
@@ -98,7 +126,13 @@ class ConnectedComponent:
             bool: success
         """
         plane_samples = self.connectors["center_2d"]
-        chull_area = MultiPoint(plane_samples).convex_hull.area
+        if len(self.connectors) == 1:
+            chull_area = np.pi * self.connectors["radius"][0] ** 2
+        elif len(self.connectors) == 2:
+            d = np.sqrt(np.sum((plane_samples[0] - plane_samples[1]) ** 2))
+            chull_area = np.mean(self.connectors["radius"]) * d
+        else:
+            chull_area = ConvexHull(plane_samples).volume
         objective = max(self.area / chull_area - settings.CONNECTOR_OBJECTIVE_TH, 0)
         return objective
 
@@ -120,7 +154,7 @@ def grid_sites_polygon(polygon: Polygon, radius: float) -> np.ndarray:
     # erode polygon by radius
     eroded_polygon = polygon.buffer(-1 * radius)
     # cancel if too small
-    min_area = 1.5 * np.pi * radius ** 2
+    min_area = 1.5 * np.pi * radius**2
     if eroded_polygon.area < min_area:
         return np.array([])
 
@@ -133,7 +167,7 @@ def grid_sites_polygon(polygon: Polygon, radius: float) -> np.ndarray:
         spacing = radius
     else:
         spacing = 2 * radius
-    
+
     # get angle of MRR
     angle = -1 * np.arctan2(mrr_edges[0, 1], mrr_edges[0, 0])
     # rotate eroded polygon so it has no rotation
@@ -149,8 +183,8 @@ def grid_sites_polygon(polygon: Polygon, radius: float) -> np.ndarray:
     if len(yp) == 0:
         return np.array([])
     yp += (min_y + max_y) / 2 - (yp.min() + yp.max()) / 2
-    X, Y = np.meshgrid(xp, yp)
-    xy = np.stack((X.ravel(), Y.ravel()), axis=1)
+    xgrid, ygrid = np.meshgrid(xp, yp)
+    xy = np.stack((xgrid.ravel(), ygrid.ravel()), axis=1)
 
     # unrotate points
     rotation = np.array(
@@ -159,11 +193,7 @@ def grid_sites_polygon(polygon: Polygon, radius: float) -> np.ndarray:
     xy = xy @ rotation
 
     # check which points are inside eroded polygon
-    mask = np.zeros(xy.shape[0], dtype=bool)
-    for i in range(xy.shape[0]):
-        point = Point(xy[i])
-        if point.within(eroded_polygon):
-            mask[i] = True
+    mask = contains_xy(eroded_polygon, xy[:, 0], xy[:, 1])
     return xy[mask]
 
 
@@ -184,7 +214,7 @@ class CrossSection:
         if path3d is None:
             # 'Missed' the part
             logger.warning("plane missed part")
-            CrossSectionError("plane missed part")
+            CrossSectionError(1)
 
         # triangulate the cross section
         path2d, self.xform = path3d.to_planar()
@@ -203,25 +233,33 @@ class CrossSection:
             tuple[Trimesh, Trimesh]: two meshes resulting from split
         """
         positive = mesh.slice_plane(
-            plane_origin=self.plane.origin, plane_normal=self.plane.normal, cap=True
+            plane_origin=self.plane.origin,
+            plane_normal=self.plane.normal,
+            cap=True,
+            use_pyembree=True,
         )
         utils.trimesh_repair(positive)
 
         negative = mesh.slice_plane(
-            plane_origin=self.plane.origin, plane_normal=-1 * self.plane.normal, cap=True
+            plane_origin=self.plane.origin,
+            plane_normal=-1 * self.plane.normal,
+            cap=True,
+            use_pyembree=True,
         )
         utils.trimesh_repair(negative)
 
         # split parts and assign to connected components
-        positive_parts = positive.split(only_watertight=False)
-        negative_parts = negative.split(only_watertight=False)
+        positive_parts = [
+            p for p in positive.split() if p.volume > 1
+        ]
+        negative_parts = [
+            p for p in negative.split() if p.volume > 1
+        ]
         if len(positive_parts) == 0 or len(negative_parts) == 0:
             logger.warning("split lost a part")
-            raise CrossSectionError("split lost a part")
+            raise CrossSectionError(0)
 
-        cc_pts = np.array(
-            [cc.a_point for cc in self.connected_components]
-        )
+        cc_pts = np.array([cc.a_point for cc in self.connected_components])
 
         for i, part in enumerate(positive_parts):
             dist = abs(part.nearest.signed_distance(cc_pts))
@@ -232,15 +270,15 @@ class CrossSection:
             dist = abs(part.nearest.signed_distance(cc_pts))
             for idx in np.argwhere(dist < 1.0e-6)[:, 0]:
                 self.connected_components[idx].negative = i + len(positive_parts)
-        
+
         cc_idx = [cc.positive for cc in self.connected_components]
         cc_idx += [cc.negative for cc in self.connected_components]
         if None in cc_idx:
             logger.warning("cc missing part")
-            raise CrossSectionError("cc missing part")
+            raise CrossSectionError(2)
 
         parts = np.concatenate((positive_parts, negative_parts))
         if not np.all(np.isin(np.arange(len(parts)), np.unique(cc_idx))):
             logger.warning("part missing cc")
-            raise CrossSectionError("part missing cc")
+            raise CrossSectionError(3)
         return parts

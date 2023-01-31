@@ -1,9 +1,10 @@
 """BSPTree class and related functions"""
 from __future__ import annotations
+
 import copy
-from typing import Dict
 import json
 from pathlib import Path
+from typing import Dict
 
 import numpy as np
 from trimesh import Trimesh, load
@@ -269,7 +270,6 @@ def get_planes(
     Returns:
         list[Plane]: list of all valid cutting planes for the input object
     """
-    logger.info("getting planes")
     # project all vertices of the input object onto the input normal vector
     projection = part.vertices @ normal
     # determine the extent of the object in the direction defined by the normal vector
@@ -300,6 +300,7 @@ def process_normal(
     """
     trees_of_this_normal = []  # start a list of trees for splits along this normal
     # iterate over all valid cutting planes for the node
+    logger.info("processing planes ...")
     for plane in get_planes(node.part, normal):
         # split the node using the plane
         try:
@@ -307,7 +308,7 @@ def process_normal(
             tree = expand_node(base_tree, node.path, plane)
             trees_of_this_normal.append(tree)
         except Exception as exc:
-            logger.info("bad plane %s", exc)
+            logger.info("bad plane %s: %s", exc.__class__.__name__, exc)
     # avoid empty list errors during objective function evaluation
     if len(trees_of_this_normal) == 0:
         return trees_of_this_normal
@@ -316,7 +317,9 @@ def process_normal(
     objectives = objective_functions.objectives
     for funcname, evaluate_objective_func in objectives.items():
         if funcname == "utilization":
-            evaluate_objective_func(trees_of_this_normal, node.path, node.printer_extents)
+            evaluate_objective_func(
+                trees_of_this_normal, node.path, node.printer_extents
+            )
         else:
             evaluate_objective_func(trees_of_this_normal, node.path)
     logger.info("%s good trees", len(trees_of_this_normal))

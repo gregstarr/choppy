@@ -1,8 +1,9 @@
 """main search functions"""
+from __future__ import annotations
+
 from pathlib import Path
 
 import numpy as np
-from trimesh import Trimesh
 
 from choppy import settings
 from choppy.bsp_node import BSPNode
@@ -56,6 +57,7 @@ def evaluate_cuts(
     for i, normal in enumerate(test_normals):
         progress.update(normal=i, total_normals=len(test_normals))
         trees += process_normal(normal, node, base_tree)
+    progress.update(normal=0, total_normals=len(test_normals))
 
     logger.info("total trees: %d", len(trees))
     # go through the list of trees, best ones first, and throw away any that are too
@@ -66,6 +68,15 @@ def evaluate_cuts(
             result_set.append(tree)
     logger.info("%d valid trees", len(result_set))
     return result_set
+
+
+class InvalidChoppyInputError(Exception):
+    def __init__(self) -> None:
+        super().__init__("Input mesh already small enough to fit in printer")
+
+class ProcessFailureError(Exception):
+    def __init__(self) -> None:
+        super().__init__("No valid chops found")
 
 
 def beam_search(starter: BSPTree, name: str, output_dir: Path) -> BSPTree:
@@ -96,10 +107,10 @@ def beam_search(starter: BSPTree, name: str, output_dir: Path) -> BSPTree:
     )
 
     if all_at_goal(current_trees):
-        raise ValueError("Input mesh already small enough to fit in printer")
+        raise InvalidChoppyInputError()
 
     total_parts = int(sum([p.n_parts for p in current_trees[0].leaves]))
-    progress.update(part=0, total_parts=total_parts)
+    progress.update(part=0, total_parts=total_parts, total_trees=settings.BEAM_WIDTH)
     # keep track of n_leaves, in each iteration we will only consider trees with the
     # same number of leaves
     # I think the trees become less comparable when they don't have the same number of
@@ -110,7 +121,7 @@ def beam_search(starter: BSPTree, name: str, output_dir: Path) -> BSPTree:
         new_bsps = []  # list of new bsps
         # look at all trees that haven't terminated
         active_trees = not_at_goal_set(current_trees)
-        progress.update(total_trees=len(active_trees), part=n_leaves - 1)
+        progress.update(part=n_leaves - 1)
         for i, tree in enumerate(active_trees):
             progress.update(tree=i)
             # only consider trees with a certain number of leaves
@@ -135,7 +146,7 @@ def beam_search(starter: BSPTree, name: str, output_dir: Path) -> BSPTree:
         current_trees += [t for t in extra_leaves_trees if t not in current_trees]
 
         if len(current_trees) == 0:  # all of the trees failed
-            raise Exception("No valid chops found")
+            raise ProcessFailureError()
 
         total_parts = int(sum(p.n_parts for p in current_trees[0].leaves))
         progress.update(total_parts=total_parts)

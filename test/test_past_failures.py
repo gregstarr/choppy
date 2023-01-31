@@ -3,9 +3,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-import trimesh
-from choppy import settings, utils
-from choppy.bsp_node import Plane
+
 from choppy.main import run
 
 test_data = [

@@ -1,10 +1,10 @@
 """Objective functions"""
 from __future__ import annotations
+
 import numpy as np
 from trimesh import Trimesh
 
-from choppy import settings, bsp_tree
-from choppy.logger import logger
+from choppy import bsp_tree, settings
 
 
 def evaluate_nparts_objective(trees: list[bsp_tree.BSPTree], path: tuple):
@@ -19,18 +19,24 @@ def evaluate_nparts_objective(trees: list[bsp_tree.BSPTree], path: tuple):
 def evaluate_utilization_objective(
     trees: list[bsp_tree.BSPTree], path: tuple, printer_extents: np.ndarray
 ):
-    V = np.prod(printer_extents)
+    printer_volume = np.prod(printer_extents)
     for tree in trees:
         node = tree.get_node(path)
         if settings.OBB_UTILIZATION:
             util_obj = max(
                 tree.objectives["utilization"],
-                max(1 - c.obb.volume / (c.n_parts * V) for c in node.children),
+                max(
+                    1 - c.obb.volume / (c.n_parts * printer_volume)
+                    for c in node.children
+                ),
             )
         else:
             util_obj = max(
                 tree.objectives["utilization"],
-                max(1 - c.part.volume / (c.n_parts * V) for c in node.children),
+                max(
+                    1 - c.part.volume / (c.n_parts * printer_volume)
+                    for c in node.children
+                ),
             )
         tree.objectives["utilization"] = util_obj
 
@@ -79,11 +85,13 @@ def get_fragility_for_normal(part: Trimesh, normal: np.ndarray, origins: np.ndar
 
 
 def evaluate_fragility_objective(trees: list[bsp_tree.BSPTree], path: tuple):
-    """Get fragility objective for a set of trees who only differ by the origin of their last cut
+    """Get fragility objective for a set of trees who only differ by the origin of 
+    their last cut
 
     - figure out possibly fragile points
     - cast rays from those points in the direction of normal
-    - if the rays don't intersect the mesh somewhere else, check if the rays are longer than the Thold
+    - if the rays don't intersect the mesh somewhere else, check if the rays are longer
+        than the Thold
     - if they do, check the thold but also make sure the ray hits the plane first
     """
     part = trees[0].get_node(path).part
