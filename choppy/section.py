@@ -15,7 +15,7 @@ from choppy.logger import logger
 
 class ConnectedComponentError(Exception):
     def __init__(self, cc, msg) -> None:
-        super().__init__(f"cc area: {cc.area} | {msg}")
+        super().__init__(f"(area {cc.area:.1f}) {msg}")
 class NoValidSitesError(ConnectedComponentError):
     def __init__(self, cc) -> None:
         super().__init__(cc, "no valid connector sites")

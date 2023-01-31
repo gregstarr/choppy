@@ -134,7 +134,7 @@ class BSPNode:
         )
 
 
-def split(node: BSPNode, plane: Plane) -> BSPNode:
+def split(node: BSPNode, plane: Plane, separate=True) -> BSPNode:
     """Split a node with a plane
 
     Args:
@@ -148,7 +148,7 @@ def split(node: BSPNode, plane: Plane) -> BSPNode:
 
     # split the part
     node.cross_section = section.CrossSection(node.part, plane)
-    parts = node.cross_section.split(node.part)
+    parts = node.cross_section.split(node.part, separate)
 
     for i, part in enumerate(parts):
         if part.volume < 0.1:  # make sure each part has some volume

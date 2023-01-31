@@ -163,33 +163,32 @@ class ConnectorPlacer:
                 self.cc_path.append(node.path)
                 caps.append(cc.mesh)
 
-        self.connectors = np.array(connectors, dtype=connector_t)
-        self.n_connectors = self.connectors.shape[0]
-        if self.n_connectors == 0:
+        if len(connectors) == 0:
             raise NoConnectorSitesFoundError()
+        self.connectors = np.array(connectors, dtype=connector_t)
 
         unique_radii = np.unique(self.connectors["radius"])
         self.n_variants = unique_radii.shape[0]
         for i, rad in enumerate(unique_radii):
             mask = self.connectors["radius"] == rad
             self.connectors["variant"][mask] = i
-        
+
+        logger.info("determining connector-cut intersections")
+        intersections = np.zeros(self.connectors.shape[0], dtype=int)
+        for cap in caps:
+            dist = cap.nearest.on_surface(self.connectors["center"])[1]
+            mask = dist < self.connectors["radius"]
+            intersections[mask] += 1
+        good_connector_mask = intersections <= 1
+        self.connectors = self.connectors[good_connector_mask]
+        self.n_connectors = self.connectors.shape[0]
+
         logger.info("Connection placer stats")
         logger.info("connectors %s", self.n_connectors)
         logger.info("connected components %s", len(self.cc_area))
         logger.info("connector variants %s", self.n_variants)
 
         self.collisions = np.zeros((self.n_connectors, self.n_connectors), dtype=bool)
-
-        logger.info("determining connector-cut intersections")
-        intersections = np.zeros(self.n_connectors, dtype=int)
-        for cap in caps:
-            dist = cap.nearest.on_surface(self.connectors["center"])[1]
-            mask = dist < self.connectors["radius"]
-            intersections[mask] += 1
-        self.collisions[intersections > 1, :] = True
-        self.collisions[:, intersections > 1] = True
-
         logger.info("determining connector-connector intersections")
         distances = np.sqrt(
             np.sum(

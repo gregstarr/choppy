@@ -186,6 +186,10 @@ class BSPTree:
         Returns:
             float: objective value
         """
+        components = self.get_objective_components()
+        return sum(components.values())
+    
+    def get_objective_components(self):
         weights = settings.OBJECTIVE_WEIGHTS
         part = weights["part"] * self.objectives["nparts"]
         util = weights["utilization"] * self.objectives["utilization"]
@@ -193,7 +197,15 @@ class BSPTree:
         fragility = weights["fragility"] * self.objectives["fragility"]
         seam = weights["seam"] * self.objectives["seam"]
         symmetry = weights["symmetry"] * self.objectives["symmetry"]
-        return part + util + connector + fragility + seam + symmetry
+        return dict(
+            part=part,
+            util=util,
+            connector=connector,
+            fragility=fragility,
+            seam=seam,
+            symmetry=symmetry
+        )
+
 
     def export_stls(self, output_dir: Path, name: str):
         """Saves all of a tree's parts

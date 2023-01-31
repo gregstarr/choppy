@@ -151,8 +151,13 @@ def beam_search(starter: BSPTree, name: str, output_dir: Path) -> BSPTree:
         total_parts = int(sum(p.n_parts for p in current_trees[0].leaves))
         progress.update(total_parts=total_parts)
         logger.info("Leaves: %d", n_leaves)
-        logger.info("best objective: %s", current_trees[0].objective)
         logger.info("estimated number of parts: %s", total_parts)
+        
+        logger.info("top trees:")
+        for tree in current_trees:
+            for comp, val in tree.get_objective_components():
+                logger.info("%s: %s", comp, val)
+            logger.info("total objective: %s\n", tree.objective)
 
         # save progress
         for i, tree in enumerate(current_trees[: settings.BEAM_WIDTH]):
