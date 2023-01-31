@@ -49,6 +49,7 @@ def run(meshpath: Path, printer_extents: np.ndarray, name: str, output_directory
     # use simulated annealing to determine the best combination of connectors
     state = connector_placer.simulated_annealing_connector_placement()
     # save the final tree including the state
+    logger.info("Saving tree with connector placement")
     tree.save(output_directory / "final_tree_with_connectors.json", state)
     # add the connectors / subtract the slots from the parts of the partitioned
     # input object

@@ -225,6 +225,7 @@ class ConnectorPlacer:
             self.cc_area,
             initial_state
         )
+        logger.info("considering %s connectors", self.n_connectors)
         logger.info("initial connector objective %s", initial_objective)
         state = sa_connector_placement(
             initial_state,

@@ -249,12 +249,21 @@ class CrossSection:
         utils.trimesh_repair(negative)
 
         # split parts and assign to connected components
-        positive_parts = [
-            p for p in positive.split() if p.volume > 1
-        ]
-        negative_parts = [
-            p for p in negative.split() if p.volume > 1
-        ]
+        if positive.body_count > 1:
+            positive_parts = [
+                utils.trimesh_repair(p) for p in positive.split(only_watertight=False)
+                if split_mesh_check(p)
+            ]
+        else:
+            positive_parts = [positive]
+        if negative.body_count > 1:
+            negative_parts = [
+                utils.trimesh_repair(p) for p in negative.split(only_watertight=False)
+                if split_mesh_check(p)
+            ]
+        else:
+            negative_parts = [negative]
+        
         if len(positive_parts) == 0 or len(negative_parts) == 0:
             logger.warning("split lost a part")
             raise CrossSectionError(0)
@@ -282,3 +291,11 @@ class CrossSection:
             logger.warning("part missing cc")
             raise CrossSectionError(3)
         return parts
+
+
+def split_mesh_check(mesh):
+    return (
+        (mesh.vertices.shape[0] >= 5) & 
+        (mesh.faces.shape[0] >= 4) & 
+        (mesh.volume > 1)
+    )
