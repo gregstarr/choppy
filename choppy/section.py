@@ -14,11 +14,14 @@ from choppy.logger import logger
 
 
 class ConnectedComponentError(Exception):
-    def __init__(self) -> None:
-        super().__init__("no valid connector sites")
-class CcTooSmallError(Exception):
-    def __init__(self) -> None:
-        super().__init__("connected component area too small")
+    def __init__(self, cc, msg) -> None:
+        super().__init__(f"cc area: {cc.area} | {msg}")
+class NoValidSitesError(ConnectedComponentError):
+    def __init__(self, cc) -> None:
+        super().__init__(cc, "no valid connector sites")
+class CcTooSmallError(ConnectedComponentError):
+    def __init__(self, cc) -> None:
+        super().__init__(cc, "connected component area too small")
 
 class CrossSectionError(Exception):
     variants = [
@@ -73,7 +76,7 @@ class ConnectedComponent:
         self.negative = None
 
         if self.area < min_cc_area:
-            raise CcTooSmallError()
+            raise CcTooSmallError(self)
 
         self.connectors = self._get_connectors(mesh, xform)
         self.objective = self._get_objective()
@@ -112,7 +115,7 @@ class ConnectedComponent:
             connectors.append(np.array(cdata, dtype=connector_spec))
         if len(connectors) == 0:
             logger.info("no valid connector sites, cc area: %s", self.area)
-            raise ConnectedComponentError()
+            raise NoValidSitesError(self)
         connectors = np.concatenate(connectors)
         return connectors
 
@@ -223,7 +226,7 @@ class CrossSection:
             cc = ConnectedComponent(polygon, self.xform, self.plane, mesh)
             self.connected_components.append(cc)
 
-    def split(self, mesh: Trimesh) -> tuple[Trimesh, Trimesh]:
+    def split(self, mesh: Trimesh, separate=True) -> tuple[Trimesh, Trimesh]:
         """splits mesh
 
         Args:
@@ -249,14 +252,14 @@ class CrossSection:
         utils.trimesh_repair(negative)
 
         # split parts and assign to connected components
-        if positive.body_count > 1:
+        if positive.body_count > 1 and separate:
             positive_parts = [
                 utils.trimesh_repair(p) for p in positive.split(only_watertight=False)
                 if split_mesh_check(p)
             ]
         else:
             positive_parts = [positive]
-        if negative.body_count > 1:
+        if negative.body_count > 1 and separate:
             negative_parts = [
                 utils.trimesh_repair(p) for p in negative.split(only_watertight=False)
                 if split_mesh_check(p)
@@ -272,12 +275,12 @@ class CrossSection:
 
         for i, part in enumerate(positive_parts):
             dist = abs(part.nearest.signed_distance(cc_pts))
-            for idx in np.argwhere(dist < 1.0e-6)[:, 0]:
+            for idx in np.argwhere(dist < 1.0e-2)[:, 0]:
                 self.connected_components[idx].positive = i
 
         for i, part in enumerate(negative_parts):
             dist = abs(part.nearest.signed_distance(cc_pts))
-            for idx in np.argwhere(dist < 1.0e-6)[:, 0]:
+            for idx in np.argwhere(dist < 1.0e-2)[:, 0]:
                 self.connected_components[idx].negative = i + len(positive_parts)
 
         cc_idx = [cc.positive for cc in self.connected_components]

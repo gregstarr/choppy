@@ -35,32 +35,45 @@ def run(meshpath: Path, printer_extents: np.ndarray, name: str, output_directory
     starter = prepare_starter(meshpath, printer_extents)
     # complete the beam search using the starter, no search will take place if the
     # starter tree is already adequately partitioned
-    tree = beam_search(starter, name, output_directory)
-    logger.info("Best BSP-tree found in %s seconds", time.time() - t0)
-    # save the tree now in case the connector placement fails
-    tree.save(output_directory / "final_tree.json")
+    trees = beam_search(starter, name, output_directory)
+    logger.info("Best BSP-trees found in %s seconds", time.time() - t0)
 
-    # mark starting time
-    t0 = time.time()
-    logger.info("finding best connector arrangement")
-    # create connector placer object, this creates all potential connectors and
-    # determines their collisions
-    connector_placer = connector.ConnectorPlacer(tree)
-    # use simulated annealing to determine the best combination of connectors
-    state = connector_placer.simulated_annealing_connector_placement()
-    # save the final tree including the state
-    logger.info("Saving tree with connector placement")
-    tree.save(output_directory / "final_tree_with_connectors.json", state)
-    # add the connectors / subtract the slots from the parts of the partitioned
-    # input object
-    original_tree = open_tree(
-        output_directory / "final_tree.json", meshpath, printer_extents
-    )
-    tree = connector_placer.insert_connectors(original_tree, state, printer_extents)
+    error = None
+    for tree in trees:
+        try:
+            # save the tree now in case the connector placement fails
+            tree.save(output_directory / "final_tree.json")
+            # mark starting time
+            t0 = time.time()
+            logger.info("finding best connector arrangement")
+            # create connector placer object, this creates all potential connectors and
+            # determines their collisions
+            connector_placer = connector.ConnectorPlacer(tree)
+            # use simulated annealing to determine the best combination of connectors
+            state = connector_placer.simulated_annealing_connector_placement()
+            # save the final tree including the state
+            logger.info("Saving tree with connector placement")
+            tree.save(output_directory / "final_tree_with_connectors.json", state)
+            # add the connectors / subtract the slots from the parts of the partitioned
+            # input object
+            original_tree = open_tree(
+                output_directory / "final_tree.json", meshpath, printer_extents
+            )
+            tree = connector_placer.insert_connectors(
+                original_tree, state, printer_extents
+            )
+        except Exception as exc:
+            logger.info("failed connector insertion")
+            logger.exception(exc)
+            error = exc
+        else:
+            # export the parts of the partitioned object
+            tree.export_stls(output_directory, name)
+            logger.info("Finished")
+            return
 
-    # export the parts of the partitioned object
-    tree.export_stls(output_directory, name)
-    logger.info("Finished")
+    raise error
+
 
 
 def prepare_starter(mesh_fn: Path, printer_extents) -> BSPTree:

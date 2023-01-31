@@ -230,7 +230,7 @@ class BSPTree:
             json.dump({"nodes": nodes, "state": [bool(s) for s in state]}, f)
 
 
-def expand_node(tree: BSPTree, path: tuple, plane: Plane) -> BSPTree:
+def expand_node(tree: BSPTree, path: tuple, plane: Plane, separate=True) -> BSPTree:
     """Splits a tree at the node given by `path` using `plane`. Returns a copy of the
     original tree but with the split node
 
@@ -246,7 +246,7 @@ def expand_node(tree: BSPTree, path: tuple, plane: Plane) -> BSPTree:
     # collect the node of the copied tree according to `path`
     new_node = new_tree.get_node(path)
     # attempt to split the node using `plane`
-    new_node = split(new_node, plane)
+    new_node = split(new_node, plane, separate)
     # if not successful, `new_node` may be None
     # add `new_node`'s children to the `new_tree`'s list of nodes
     new_tree.nodes += new_node.children

@@ -157,7 +157,7 @@ def beam_search(starter: BSPTree, name: str, output_dir: Path) -> BSPTree:
         # save progress
         for i, tree in enumerate(current_trees[: settings.BEAM_WIDTH]):
             tree.save(output_dir / f"{name}_beam{i}.json")
-        current_trees[0].export_stls(output_dir, name)
+            tree.export_stls(output_dir, f"{name}_tree{i}")
     
-    progress.update(trees=0, part=total_parts)
-    return current_trees[0]
+    progress.update(tree=0, part=total_parts)
+    return current_trees

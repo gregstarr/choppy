@@ -50,8 +50,6 @@ def evaluate_connector_objective(
                 (np.where(mask, rc_sq, 0) - np.where(mask, distances, 0) / 2) ** 2
             )
         objective += area / (settings.EMPTY_CC_PENALTY + max(0, ci))
-        if ci < 0:
-            objective -= ci / area
 
     return objective
 
@@ -175,6 +173,11 @@ class ConnectorPlacer:
         for i, rad in enumerate(unique_radii):
             mask = self.connectors["radius"] == rad
             self.connectors["variant"][mask] = i
+        
+        logger.info("Connection placer stats")
+        logger.info("connectors %s", self.n_connectors)
+        logger.info("connected components %s", len(self.cc_area))
+        logger.info("connector variants %s", self.n_variants)
 
         self.collisions = np.zeros((self.n_connectors, self.n_connectors), dtype=bool)
 
@@ -225,8 +228,12 @@ class ConnectorPlacer:
             self.cc_area,
             initial_state
         )
-        logger.info("considering %s connectors", self.n_connectors)
         logger.info("initial connector objective %s", initial_objective)
+        logger.info("initial connectors %s", initial_state.sum())
+        logger.info(
+            "initial collisions %s",
+            np.argwhere(self.collisions[initial_state, :][:, initial_state])
+        )
         state = sa_connector_placement(
             initial_state,
             self.connectors,
@@ -241,7 +248,9 @@ class ConnectorPlacer:
             state
         )
         progress.update(connector_progress=0.3)
-        logger.info("finished with connector placement, final objective %s", final_objective)
+        logger.info(
+            "finished with connector placement, final objective %s", final_objective
+        )
         return state
 
     def insert_connectors(
@@ -267,7 +276,9 @@ class ConnectorPlacer:
         for node in tree.nodes:
             if node.plane is None:
                 continue
-            new_tree2 = bsp_tree.expand_node(new_tree, node.path, node.plane)
+            new_tree2 = bsp_tree.expand_node(
+                new_tree, node.path, node.plane, separate=False
+            )
             new_tree = new_tree2
             new_node = new_tree.get_node(node.path)
             # reduce to connectors for this path (cross section)

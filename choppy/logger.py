@@ -1,7 +1,7 @@
 """Create logger"""
+import dataclasses
 import logging
 import sys
-import dataclasses
 
 import colorlog
 
@@ -27,7 +27,7 @@ class ProgressTracker:
     def tree_progress(self):
         prog1 = self.normal / self.total_normals
         prog2 = (prog1 + self.tree) / self.total_trees
-        return (prog2 + self.part) / max(self.total_parts, self.part + 1)
+        return (prog2 + self.part) / max(self.total_parts, self.part)
 
     def report(self):
         logger.info("%s", self)
