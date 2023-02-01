@@ -320,6 +320,7 @@ class ConnectorPlacer:
         else:
             new_tree = bsp_tree.BSPTree(tree.nodes[0].part, printer_extents)
         for ni, node in enumerate(tree.nodes):
+            progress.update(connector_progress=0.3 + 0.7 * (ni) / len(tree.nodes))
             if node.plane is None:
                 continue
             try:
@@ -347,7 +348,7 @@ class ConnectorPlacer:
                 conn = sum(conn)
                 
                 child_node.part = insert_connector(child_node.part, conn, op)
-            progress.update(connector_progress=0.3 + 0.7 * (ni + 1) / len(tree.nodes))
+        progress.update(connector_progress=1)
         return new_tree
 
 
