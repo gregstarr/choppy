@@ -8,7 +8,11 @@ from trimesh.creation import triangulate_polygon
 from trimesh.primitives import Sphere
 
 from choppy import bsp_tree, settings, utils
-from choppy.exceptions import InvalidOperationError, OperationFailedError
+from choppy.exceptions import (
+    InvalidOperationError,
+    OperationFailedError,
+    CcTooSmallError
+)
 from choppy.logger import logger, progress
 
 
@@ -322,8 +326,8 @@ class ConnectorPlacer:
                 new_tree = bsp_tree.expand_node(
                     new_tree, node.path, node.plane, separate=False
                 )
-            except Exception:
-                print()
+            except CcTooSmallError:
+                logger.exception("why")
             new_node = new_tree.get_node(node.path)
             for child_node in new_node.children:
                 if child_node.positive:
@@ -345,7 +349,6 @@ class ConnectorPlacer:
                 child_node.part = insert_connector(child_node.part, conn, op)
             progress.update(connector_progress=0.3 + 0.7 * (ni + 1) / len(tree.nodes))
         return new_tree
-
 
 
 def insert_connector(part: Trimesh, connector: Trimesh, operation: str):
