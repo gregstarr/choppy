@@ -87,6 +87,7 @@ def prepare_starter(mesh_fn: Path, printer_extents) -> BSPTree:
     """
     # open the input mesh as the starter
     starter = trimesh.load(mesh_fn, use_pyembree=True)
+    starter.rezero()
     utils.trimesh_repair(starter)
     n_faces = len(starter.faces)
     n_verts = len(starter.vertices)

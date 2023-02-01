@@ -22,12 +22,13 @@ NORMALS = uniform_normals(N_THETA, N_PHI)
 ADD_MIDDLE_PLANE = True
 DIFFERENT_ORIGIN_TH = 9  # should be less than PLANE_SPACING
 DIFFERENT_ANGLE_TH = np.pi / 10
+N_RANDOM_ROTATIONS = 400
 
 # objective parameters
 OBJECTIVE_WEIGHTS = {
     "part": 1,
     "utilization": .25,
-    "connector": 1,
+    "connector": .1,
     "fragility": 1,
     "seam": 0,  # set to zero until implemented
     "symmetry": 0  # set to zero until implemented

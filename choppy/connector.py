@@ -2,20 +2,15 @@ from __future__ import annotations
 
 import numpy as np
 from numba import jit
-from trimesh import Trimesh
+from shapely import Polygon, contains_xy
+from trimesh import Trimesh, transform_points
+from trimesh.creation import triangulate_polygon
 from trimesh.primitives import Sphere
 
 from choppy import bsp_tree, settings, utils
+from choppy.exceptions import InvalidOperationError, OperationFailedError
 from choppy.logger import logger, progress
 
-connector_t = np.dtype(
-    [
-        ("center", np.float32, (3,)),
-        ("radius", np.float32),
-        ("cci", np.uint32),
-        ("variant", np.uint32),
-    ]
-)
 
 @jit(nopython=True)
 def evaluate_connector_objective(
@@ -36,8 +31,8 @@ def evaluate_connector_objective(
         cc_mask = connectors["cci"] == i
         cc_conn = connectors[cc_mask & state]
         if cc_conn.shape[0] > 0:
-            rc = 20 * cc_conn["radius"]
-            rc = np.minimum(rc, np.sqrt(area))
+            rc = 12 * cc_conn["radius"]
+            rc = np.minimum(rc, np.sqrt(area) / 2)
             ci = np.pi * np.sum(rc**2)
             arr1 = np.expand_dims(cc_conn["center"], 1)
             arr2 = np.expand_dims(cc_conn["center"], 0)
@@ -62,18 +57,15 @@ def sa_iteration(
     state: np.ndarray,
     objective: float,
     temp: float,
-    n_variants: int,
 ) -> tuple[np.ndarray, float]:
     """run a single simulated annealing iteration"""
     new_state = state.copy()
     if np.random.randint(0, 2) or not state.any() or state.all():
-        idx = sample(
-            connectors, np.ones(connectors.shape[0]).astype("bool"), n_variants
-        )
+        idx = sample(np.ones(connectors.shape[0]).astype("bool"))
         new_state[idx] = 0 if state[idx] else 1
     else:
-        add = sample(connectors, ~state, n_variants)
-        remove = sample(connectors, state, n_variants)
+        add = sample(~state)
+        remove = sample(state)
         new_state[add] = 1
         new_state[remove] = 0
 
@@ -89,13 +81,9 @@ def sa_iteration(
 
 
 @jit(nopython=True)
-def sample(connectors: np.ndarray[connector_t], mask, n):
-    r1 = np.random.randint(0, n)
-    mask2 = mask & (connectors["variant"] == r1)
-    if not mask2.any():
-        mask2 = mask
-    r2 = np.random.randint(0, mask2.sum())
-    return np.flatnonzero(mask2)[r2]
+def sample(mask):
+    r = np.random.randint(0, mask.sum())
+    return np.flatnonzero(mask)[r]
 
 
 @jit(nopython=True)
@@ -104,22 +92,89 @@ def sa_connector_placement(
     connectors: np.ndarray[connector_t],
     collisions: np.array,
     cc_area: list[float],
-    n_variants: int,
 ):
     objective = evaluate_connector_objective(connectors, collisions, cc_area, state)
     # initialization
     for _ in range(settings.SA_INITIALIZATION_ITERATIONS):
         state, objective = sa_iteration(
-            connectors, collisions, cc_area, state, objective, 0, n_variants
+            connectors, collisions, cc_area, state, objective, 0
         )
 
     initial_temp = objective / 2
     for temp in np.linspace(initial_temp, 0, settings.SA_ITERATIONS):
         state, objective = sa_iteration(
-            connectors, collisions, cc_area, state, objective, temp, n_variants
+            connectors, collisions, cc_area, state, objective, temp
         )
 
     return state
+
+
+def sample_polygon(polygon: Polygon, radius: float) -> np.ndarray:
+    """Returns a grid of connector cantidate locations. The connected component
+    (chop cross section) is rotated to align with the minimum rotated bounding box,
+    then the resulting polygon is grid sampled
+
+    Args:
+        polygon (Polygon)
+        diameter (float)
+
+    Returns:
+        np.ndarray: samples
+    """
+    density = 1 / 16  # samples per sq mm
+    n_samples = int(np.ceil(2 * density * polygon.area))
+    # erode polygon by radius
+    eroded_polygon = polygon.buffer(-1 * radius)
+    minx, miny, maxx, maxy = polygon.bounds
+    x_samples = minx + np.random.rand(n_samples) * (maxx - minx)
+    y_samples = miny + np.random.rand(n_samples) * (maxy - miny)
+    # check which points are inside eroded polygon
+    mask = contains_xy(eroded_polygon, x_samples, y_samples)
+    points = np.column_stack((x_samples, y_samples))[mask]
+    if points.shape[0] > 200:
+        points = np.concatenate((points[:200], points[200::4]))
+    return points
+
+
+connector_t = np.dtype(
+    [
+        ("center", np.float32, (3,)),
+        ("radius", np.float32),
+        ("cci", np.uint32)
+    ]
+)
+
+
+def _get_connectors(polygon, mesh: Trimesh, xform: np.ndarray, cci):
+    connectors = []
+    for diameter in settings.CONNECTOR_SIZES:
+        radius = diameter / 2
+        # potential connector sites
+        plane_samples = sample_polygon(polygon, radius)
+        mesh_samples = transform_points(
+            np.column_stack((plane_samples, np.zeros(plane_samples.shape[0]))),
+            xform,
+        )
+        # distance from connector sites to mesh
+        dists = mesh.nearest.signed_distance(mesh_samples)
+        # check that connector sites are far enough away from mesh (won't protrude)
+        valid_mask = dists >= radius
+        if valid_mask.sum() == 0:
+            continue
+        cdata = [(center, radius, cci) for center in mesh_samples[valid_mask]]
+        connectors.append(np.array(cdata, dtype=connector_t))
+    connectors = np.concatenate(connectors)
+    if connectors.shape[0] == 0:
+        raise NoConnectorSitesFoundError()
+    return connectors
+
+
+def get_cap(polygon, xform):
+    verts, faces = triangulate_polygon(polygon, triangle_args="p")
+    verts = np.column_stack((verts, np.zeros(len(verts))))
+    verts = transform_points(verts, xform)
+    faces = np.fliplr(faces)
+    return Trimesh(verts, faces)
 
 
 class ConnectorPlacerInputError(Exception):
@@ -136,7 +191,6 @@ class ConnectorPlacer:
     connectors: np.ndarray[connector_t]
     n_connectors: int
     collisions: np.ndarray
-    n_variants: int
 
     def __init__(self, tree: bsp_tree.BSPTree):
         self.cc_area = []
@@ -147,32 +201,23 @@ class ConnectorPlacer:
         if len(tree.nodes) < 2:
             raise ConnectorPlacerInputError()
 
+        # create connectors
         logger.info("Creating connectors...")
         for node in tree.nodes:
             if node.cross_section is None:
                 continue
-            # create global vector of connectors
-            for cc in node.cross_section.connected_components:
-                # register the ConnectedComponent's sites with the global array of
-                # connectors
-                for conn in cc.connectors:
-                    connectors.append(
-                        (conn["center"], conn["radius"], len(self.cc_area), 0)
+            for ccp in node.cross_section.cc_polygons:
+                connectors.append(
+                    _get_connectors(
+                        ccp, node.part, node.cross_section.xform, len(caps)
                     )
-                self.cc_area.append(cc.area)
+                )
+                self.cc_area.append(ccp.area)
                 self.cc_path.append(node.path)
-                caps.append(cc.mesh)
+                caps.append(get_cap(ccp, node.cross_section.xform))
+        self.connectors = np.concatenate(connectors)
 
-        if len(connectors) == 0:
-            raise NoConnectorSitesFoundError()
-        self.connectors = np.array(connectors, dtype=connector_t)
-
-        unique_radii = np.unique(self.connectors["radius"])
-        self.n_variants = unique_radii.shape[0]
-        for i, rad in enumerate(unique_radii):
-            mask = self.connectors["radius"] == rad
-            self.connectors["variant"][mask] = i
-
+        # get rid of bad connectors
         logger.info("determining connector-cut intersections")
         intersections = np.zeros(self.connectors.shape[0], dtype=int)
         for cap in caps:
@@ -181,13 +226,14 @@ class ConnectorPlacer:
             intersections[mask] += 1
         good_connector_mask = intersections <= 1
         self.connectors = self.connectors[good_connector_mask]
-        self.n_connectors = self.connectors.shape[0]
 
+        # connector stats
+        self.n_connectors = self.connectors.shape[0]
         logger.info("Connection placer stats")
         logger.info("connectors %s", self.n_connectors)
         logger.info("connected components %s", len(self.cc_area))
-        logger.info("connector variants %s", self.n_variants)
 
+        # collisions
         self.collisions = np.zeros((self.n_connectors, self.n_connectors), dtype=bool)
         logger.info("determining connector-connector intersections")
         distances = np.sqrt(
@@ -214,7 +260,7 @@ class ConnectorPlacer:
         state = np.zeros(self.n_connectors, dtype=bool)
         for i in range(len(self.cc_area)):
             mask = self.connectors["cci"] == i
-            idx = sample(self.connectors, mask, self.n_variants)
+            idx = sample(mask)
             state[idx] = True
         return state
 
@@ -238,7 +284,6 @@ class ConnectorPlacer:
             self.connectors,
             self.collisions,
             self.cc_area,
-            self.n_variants
         )
         final_objective = evaluate_connector_objective(
             self.connectors,
@@ -265,62 +310,41 @@ class ConnectorPlacer:
         Returns:
             BSPTree: tree but all the part meshes have connectors
         """
-        num_inserts = state.sum()
-        logger.info("inserting %s connectors", num_inserts)
-        nc = 0
+        logger.info("inserting %s connectors", state.sum())
         if tree.nodes[0].plane is None:
             new_tree = bsp_tree.separate_starter(tree.nodes[0].part, printer_extents)
         else:
             new_tree = bsp_tree.BSPTree(tree.nodes[0].part, printer_extents)
-        for node in tree.nodes:
+        for ni, node in enumerate(tree.nodes):
             if node.plane is None:
                 continue
-            new_tree2 = bsp_tree.expand_node(
-                new_tree, node.path, node.plane, separate=False
-            )
-            new_tree = new_tree2
+            try:
+                new_tree = bsp_tree.expand_node(
+                    new_tree, node.path, node.plane, separate=False
+                )
+            except Exception:
+                print()
             new_node = new_tree.get_node(node.path)
-            # reduce to connectors for this path (cross section)
-            cci = [i for i, path in enumerate(self.cc_path) if path == node.path]
-            xs_conn = self.connectors[np.isin(self.connectors["cci"], cci) & state]
-            for cc in node.cross_section.connected_components:
-                # reduce to connectors for this connected component
-                cc_mask = (
-                    abs(cc.mesh.nearest.signed_distance(xs_conn["center"])) < 1.0e-3
+            for child_node in new_node.children:
+                if child_node.positive:
+                    adj = 0
+                    op = "union"
+                else:
+                    adj = settings.CONNECTOR_TOLERANCE / 2
+                    op = "difference"
+                c_dist = child_node.part.nearest.signed_distance(
+                    self.connectors["center"]
                 )
-                cc_conn = xs_conn[cc_mask]
-                pi = cc.positive
-                ni = cc.negative
-                conn_m = []
-                conn_f = []
+                mask = state & (abs(c_dist) < 1.0e-3)
+                cc_conn = self.connectors[mask]
+                conn = []
                 for center, radius, *_ in cc_conn:
-                    nc += 1
-                    conn_m.append(Sphere(radius=radius, center=center))
-                    conn_f.append(
-                        Sphere(
-                            radius=radius + settings.CONNECTOR_TOLERANCE / 2,
-                            center=center
-                        )
-                    )
-                conn_m = sum(conn_m)
-                conn_f = sum(conn_f)
-                new_node.children[ni].part = insert_connector(
-                    new_node.children[ni].part, conn_f, "difference"
-                )
-                new_node.children[pi].part = insert_connector(
-                    new_node.children[pi].part, conn_m, "union"
-                )
-                progress.update(connector_progress=0.3 + 0.7 * nc / num_inserts)
+                    conn.append(Sphere(radius=radius + adj, center=center))
+                conn = sum(conn)
+                
+                child_node.part = insert_connector(child_node.part, conn, op)
+            progress.update(connector_progress=0.3 + 0.7 * (ni + 1) / len(tree.nodes))
         return new_tree
-
-
-class InvalidOperationError(Exception):
-    def __init__(self) -> None:
-        super().__init__("operation not 'union' or 'difference'")
-
-class OperationFailedError(Exception):
-    def __init__(self) -> None:
-        super().__init__("Couldn't insert connector")
 
 
 

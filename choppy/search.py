@@ -8,6 +8,7 @@ import numpy as np
 from choppy import settings
 from choppy.bsp_node import BSPNode
 from choppy.bsp_tree import BSPTree, process_normal
+from choppy.exceptions import InvalidChoppyInputError, ProcessFailureError
 from choppy.logger import logger, progress
 
 
@@ -68,15 +69,6 @@ def evaluate_cuts(
             result_set.append(tree)
     logger.info("%d valid trees", len(result_set))
     return result_set
-
-
-class InvalidChoppyInputError(Exception):
-    def __init__(self) -> None:
-        super().__init__("Input mesh already small enough to fit in printer")
-
-class ProcessFailureError(Exception):
-    def __init__(self) -> None:
-        super().__init__("No valid chops found")
 
 
 def beam_search(starter: BSPTree, name: str, output_dir: Path) -> BSPTree:
@@ -155,7 +147,7 @@ def beam_search(starter: BSPTree, name: str, output_dir: Path) -> BSPTree:
         
         logger.info("top trees:")
         for tree in current_trees:
-            for comp, val in tree.get_objective_components():
+            for comp, val in tree.get_objective_components().items():
                 logger.info("%s: %s", comp, val)
             logger.info("total objective: %s\n", tree.objective)
 

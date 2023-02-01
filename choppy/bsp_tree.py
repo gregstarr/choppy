@@ -287,10 +287,11 @@ def get_planes(
     # determine the extent of the object in the direction defined by the normal vector
     limits = [projection.min(), projection.max()]
     # create planes spaced out according to the configuration
-    delta = settings.PLANE_SPACING
+    delta = settings.PLANE_SPACING / 2
+    n_planes = int(np.floor((limits[1] - limits[0]) / settings.PLANE_SPACING))
     planes = [
         Plane(d * normal, normal)
-        for d in np.arange(limits[0] + delta, limits[1], delta)
+        for d in np.linspace(limits[0] + delta, limits[1] - delta, n_planes)
     ]
     if settings.ADD_MIDDLE_PLANE:  # add the middle plane
         planes.append(Plane(normal * (projection.min() + projection.max()) / 2, normal))
@@ -381,6 +382,7 @@ def open_tree(tree_file: Path, mesh_file: Path, printer_extents: np.ndarray) -> 
     node_data = data["nodes"]
 
     mesh = load(mesh_file)
+    mesh.rezero()
     utils.trimesh_repair(mesh)
     # separate pieces
     if mesh.body_count > 1:

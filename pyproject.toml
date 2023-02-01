@@ -39,4 +39,5 @@ build-backend = "poetry.core.masonry.api"
 line-length = 88
 select = ["E", "W", "F", "N", "I", "B", "A", "TRY"]
 fix = true
+fixable = ["E", "W", "F", "N", "I", "B", "A", "TRY"]
 target-version = "py38"

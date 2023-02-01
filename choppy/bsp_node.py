@@ -7,12 +7,7 @@ from trimesh import Trimesh
 from trimesh.transformations import angle_between_vectors, random_rotation_matrix
 
 from choppy import section, settings
-
-
-class ConvexHullError(Exception):
-    """Convex hull error"""
-class LowVolumeError(Exception):
-    """low volume"""
+from choppy.exceptions import LowVolumeError
 
 
 class Plane(NamedTuple):
@@ -38,6 +33,7 @@ class BSPNode:
     plane: Plane
     cross_section: section.CrossSection
     printer_extents: np.ndarray
+    positive: bool
 
     def __init__(
         self,
@@ -45,6 +41,7 @@ class BSPNode:
         parent: "BSPNode",
         printer_extents: np.ndarray = None,
         num: int = None,
+        positive: bool = None
     ):
         """Initialize a bspnode, determine n_parts objective and termination status.
 
@@ -64,6 +61,7 @@ class BSPNode:
         # this node will get a plane and a cross_section if and when it is split
         self.plane = None
         self.cross_section = None
+        self.positive = positive
         if printer_extents is None:
             self.printer_extents = parent.printer_extents
         else:
@@ -82,7 +80,7 @@ class BSPNode:
         return f"{self.__class__.__name__}({self.path=})"
 
     def _get_obb(self):
-        rotations = random_rotation_matrix(num=100)[:, :3, :3]
+        rotations = random_rotation_matrix(num=settings.N_RANDOM_ROTATIONS)[:, :3, :3]
         projections = np.matmul(self.part.vertices, rotations)
         extents = projections.max(axis=1) - projections.min(axis=1)
         volumes = np.prod(extents, axis=1)
@@ -106,7 +104,7 @@ class BSPNode:
         Returns:
             float
         """
-        return max(cc.objective for cc in self.cross_section.connected_components)
+        return self.cross_section.objective
 
     def different_from(self, other_node: "BSPNode") -> bool:
         """determine if this node is different plane-wise from the same node on another
@@ -148,11 +146,16 @@ def split(node: BSPNode, plane: Plane, separate=True) -> BSPNode:
 
     # split the part
     node.cross_section = section.CrossSection(node.part, plane)
-    parts = node.cross_section.split(node.part, separate)
-
-    for i, part in enumerate(parts):
-        if part.volume < 0.1:  # make sure each part has some volume
-            raise LowVolumeError()
-        child = BSPNode(part, parent=node, num=i)  # potential convex hull failure
-        node.children.append(child)  # The parts become this node's children
+    
+    i = 0
+    for side_parts, pos in zip(
+        node.cross_section.split(node.part.copy(), separate),
+        [True, False]
+    ):
+        for part in side_parts:
+            if part.volume < 0.1:  # make sure each part has some volume
+                raise LowVolumeError()
+            child = BSPNode(part, parent=node, num=i, positive=pos)
+            node.children.append(child)  # The parts become this node's children
+            i += 1
     return node

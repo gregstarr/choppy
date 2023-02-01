@@ -41,6 +41,7 @@ def trimesh_repair(mesh: Trimesh):
     trimesh.repair.fix_inversion(mesh)
     trimesh.repair.fix_normals(mesh)
     mesh.process()
+    mesh.process(validate=True)
 
 
 def preview_tree(tree: bsp_tree.BSPTree, other_objects: Trimesh = None):
