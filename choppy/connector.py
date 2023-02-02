@@ -8,12 +8,14 @@ from trimesh.creation import triangulate_polygon
 from trimesh.primitives import Sphere
 
 from choppy import bsp_tree, settings, utils
-from choppy.exceptions import (
-    InvalidOperationError,
-    OperationFailedError,
-    CcTooSmallError
-)
 from choppy.logger import logger, progress
+from choppy.exceptions import (
+    CcTooSmallError, 
+    ConnectorPlacerInputError,
+    InvalidOperationError,
+    NoConnectorSitesFoundError,
+    OperationFailedError
+)
 
 
 @jit(nopython=True)
@@ -179,12 +181,6 @@ def get_cap(polygon, xform):
     verts = transform_points(verts, xform)
     faces = np.fliplr(faces)
     return Trimesh(verts, faces)
-
-
-class ConnectorPlacerInputError(Exception):
-    ...
-class NoConnectorSitesFoundError(Exception):
-    ...
 
 
 class ConnectorPlacer:

@@ -214,8 +214,12 @@ class BSPTree:
             output_dir (Path)
             name (str)
         """
+        output_files = []
         for i, leaf in enumerate(self.leaves):
-            leaf.part.export(output_dir / f"{name}_{i}.stl")
+            fn = output_dir / f"{name}_{i}.stl"
+            leaf.part.export(fn)
+            output_files.append(fn)
+        return output_files
 
     def save(self, save_path: Path, state: np.ndarray = None):
         """saves tree file json

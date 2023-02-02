@@ -55,3 +55,11 @@ class InvalidChoppyInputError(Exception):
 class ProcessFailureError(Exception):
     def __init__(self) -> None:
         super().__init__("No valid chops found")
+
+
+class ConnectorPlacerInputError(Exception):
+    ...
+
+
+class NoConnectorSitesFoundError(Exception):
+    ...
