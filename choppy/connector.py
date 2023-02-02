@@ -5,7 +5,9 @@ from numba import jit
 from shapely import Polygon, contains_xy
 from trimesh import Trimesh, transform_points
 from trimesh.creation import triangulate_polygon
-from trimesh.primitives import Sphere
+from trimesh.primitives import Box
+from trimesh.collision import CollisionManager
+from trimesh.transformations import rotation_matrix, translation_matrix
 
 from choppy import bsp_tree, settings, utils
 from choppy.logger import logger, progress
@@ -20,7 +22,8 @@ from choppy.exceptions import (
 
 @jit(nopython=True)
 def evaluate_connector_objective(
-    connectors: np.ndarray[connector_t],
+    connector_locations: np.ndarray[float],
+    connector_cci: np.ndarray[int],
     collisions: np.array,
     cc_area: list[float],
     state: np.ndarray,
@@ -34,22 +37,18 @@ def evaluate_connector_objective(
 
     for i, area in enumerate(cc_area):
         ci = 0
-        cc_mask = connectors["cci"] == i
-        cc_conn = connectors[cc_mask & state]
-        if cc_conn.shape[0] > 0:
-            rc = 12 * cc_conn["radius"]
-            rc = np.minimum(rc, np.sqrt(area) / 2)
-            ci = np.pi * np.sum(rc**2)
-            arr1 = np.expand_dims(cc_conn["center"], 1)
-            arr2 = np.expand_dims(cc_conn["center"], 0)
-            distances = np.sqrt(np.sum((arr1 - arr2) ** 2, axis=2))
-            mask = distances > 0
-            rc_sq = np.expand_dims(rc, 1) + np.expand_dims(rc, 0)
-            mask &= distances < rc_sq
-            ci -= np.sum(
-                np.pi * 
-                (np.where(mask, rc_sq, 0) - np.where(mask, distances, 0) / 2) ** 2
-            )
+        cc_mask = connector_cci == i
+        locs = connector_locations[cc_mask & state]
+        if locs.shape[0] > 0:
+            connector_area = min(settings.CONNECTOR_AREA, area / 4)
+            # covered area
+            ci = connector_area * locs.shape[0]
+            arr1 = np.expand_dims(locs, 1)
+            arr2 = np.expand_dims(locs, 0)
+            dist2 = np.sum((arr1 - arr2) ** 2, axis=2)
+            mask = dist2 > 0
+            mask &= dist2 < (4 * connector_area)
+            ci -= np.sum(np.where(mask, (connector_area - dist2 / 4), 0))
         objective += area / (settings.EMPTY_CC_PENALTY + max(0, ci))
 
     return objective
@@ -57,7 +56,8 @@ def evaluate_connector_objective(
 
 @jit(nopython=True)
 def sa_iteration(
-    connectors: np.ndarray[connector_t],
+    connector_locations: np.ndarray[float],
+    connector_cci: np.ndarray[int],
     collisions: np.array,
     cc_area: list[float],
     state: np.ndarray,
@@ -67,7 +67,7 @@ def sa_iteration(
     """run a single simulated annealing iteration"""
     new_state = state.copy()
     if np.random.randint(0, 2) or not state.any() or state.all():
-        idx = sample(np.ones(connectors.shape[0]).astype("bool"))
+        idx = sample(np.ones(connector_cci.shape[0]).astype("bool"))
         new_state[idx] = 0 if state[idx] else 1
     else:
         add = sample(~state)
@@ -76,7 +76,7 @@ def sa_iteration(
         new_state[remove] = 0
 
     new_objective = evaluate_connector_objective(
-        connectors, collisions, cc_area, new_state
+        connector_locations, connector_cci, collisions, cc_area, new_state
     )
     if new_objective < objective:
         return new_state, new_objective
@@ -95,27 +95,30 @@ def sample(mask):
 @jit(nopython=True)
 def sa_connector_placement(
     state: np.ndarray,
-    connectors: np.ndarray[connector_t],
+    connector_locations: np.ndarray[float],
+    connector_cci: np.ndarray[int],
     collisions: np.array,
     cc_area: list[float],
 ):
-    objective = evaluate_connector_objective(connectors, collisions, cc_area, state)
+    objective = evaluate_connector_objective(
+        connector_locations, connector_cci, collisions, cc_area, state
+    )
     # initialization
     for _ in range(settings.SA_INITIALIZATION_ITERATIONS):
         state, objective = sa_iteration(
-            connectors, collisions, cc_area, state, objective, 0
+            connector_locations, connector_cci, collisions, cc_area, state, objective, 0
         )
 
     initial_temp = objective / 2
     for temp in np.linspace(initial_temp, 0, settings.SA_ITERATIONS):
         state, objective = sa_iteration(
-            connectors, collisions, cc_area, state, objective, temp
+            connector_locations, connector_cci, collisions, cc_area, state, objective, temp
         )
 
     return state
 
 
-def sample_polygon(polygon: Polygon, radius: float) -> np.ndarray:
+def sample_polygon(polygon: Polygon) -> np.ndarray:
     """Returns a grid of connector cantidate locations. The connected component
     (chop cross section) is rotated to align with the minimum rotated bounding box,
     then the resulting polygon is grid sampled
@@ -127,52 +130,46 @@ def sample_polygon(polygon: Polygon, radius: float) -> np.ndarray:
     Returns:
         np.ndarray: samples
     """
-    density = 1 / 16  # samples per sq mm
-    n_samples = int(np.ceil(2 * density * polygon.area))
+    density = 1 / 9  # samples per sq mm
+    n_samples = int(np.ceil(density * polygon.area))
     # erode polygon by radius
-    eroded_polygon = polygon.buffer(-1 * radius)
+    eroded_polygon = polygon.buffer(-1 * settings.CONNECTOR_BUFFER)
     minx, miny, maxx, maxy = polygon.bounds
-    x_samples = minx + np.random.rand(n_samples) * (maxx - minx)
-    y_samples = miny + np.random.rand(n_samples) * (maxy - miny)
+    x_samples = minx + np.random.rand(4 * n_samples) * (maxx - minx)
+    y_samples = miny + np.random.rand(4 * n_samples) * (maxy - miny)
     # check which points are inside eroded polygon
     mask = contains_xy(eroded_polygon, x_samples, y_samples)
     points = np.column_stack((x_samples, y_samples))[mask]
-    if points.shape[0] > 200:
-        points = np.concatenate((points[:200], points[200::4]))
-    return points
-
-
-connector_t = np.dtype(
-    [
-        ("center", np.float32, (3,)),
-        ("radius", np.float32),
-        ("cci", np.uint32)
-    ]
-)
+    return points[:n_samples]
 
 
 def _get_connectors(polygon, mesh: Trimesh, xform: np.ndarray, cci):
     connectors = []
-    for diameter in settings.CONNECTOR_SIZES:
-        radius = diameter / 2
-        # potential connector sites
-        plane_samples = sample_polygon(polygon, radius)
-        mesh_samples = transform_points(
-            np.column_stack((plane_samples, np.zeros(plane_samples.shape[0]))),
-            xform,
+    corners = []
+    # potential connector sites
+    plane_samples = sample_polygon(polygon)
+    angles = np.random.rand(plane_samples.shape[0]) * np.pi
+    for sample, angle in zip(plane_samples, angles):
+        c_xform = (
+            xform @ 
+            translation_matrix([*sample, 0]) @ 
+            rotation_matrix(angle, [0, 0, 1])
         )
-        # distance from connector sites to mesh
-        dists = mesh.nearest.signed_distance(mesh_samples)
-        # check that connector sites are far enough away from mesh (won't protrude)
-        valid_mask = dists >= radius
-        if valid_mask.sum() == 0:
-            continue
-        cdata = [(center, radius, cci) for center in mesh_samples[valid_mask]]
-        connectors.append(np.array(cdata, dtype=connector_t))
-    connectors = np.concatenate(connectors)
-    if connectors.shape[0] == 0:
+        b = Box(
+            extents=settings.CONNECTOR_SIZE + settings.CONNECTOR_TOLERANCE,
+            transform=c_xform
+        )
+        connectors.append(b)
+        corners.append(b.vertices)
+    corners = np.stack(corners, axis=0)
+    connectors = np.array(connectors)
+    # distance from connector sites to mesh
+    dists = mesh.nearest.signed_distance(corners.reshape((-1, 3))).reshape((-1, 8))
+    # check that connector sites are far enough away from mesh (won't protrude)
+    valid_mask = dists.min(axis=1) >= settings.CONNECTOR_BUFFER
+    if valid_mask.sum() == 0:
         raise NoConnectorSitesFoundError()
-    return connectors
+    return connectors[valid_mask]
 
 
 def get_cap(polygon, xform):
@@ -186,46 +183,63 @@ def get_cap(polygon, xform):
 class ConnectorPlacer:
     """Manages optimization and placement of connectors"""
 
+    connector_cci: np.ndarray[int]
+    connector_locations: np.ndarray[float]
+    connectors: np.ndarray[Box]
     cc_area: list[float]
     cc_path: list[tuple[int]]
-    connectors: np.ndarray[connector_t]
     n_connectors: int
     collisions: np.ndarray
 
     def __init__(self, tree: bsp_tree.BSPTree):
         self.cc_area = []
         connectors = []
-        caps = []
         self.n_connectors = 0
         self.cc_path = []
+        self.connector_cci = []
         if len(tree.nodes) < 2:
             raise ConnectorPlacerInputError()
 
+        cap_manager = CollisionManager()
+        conn_manager = CollisionManager()
+        n_cc = 0
+        n_conn = 0
         # create connectors
         logger.info("Creating connectors...")
         for node in tree.nodes:
             if node.cross_section is None:
                 continue
             for ccp in node.cross_section.cc_polygons:
-                connectors.append(
-                    _get_connectors(
-                        ccp, node.part, node.cross_section.xform, len(caps)
-                    )
-                )
+                ccc = _get_connectors(ccp, node.part, node.cross_section.xform, n_cc)
+                if len(ccc) == 0:
+                    raise NoConnectorSitesFoundError()
+                connectors.append(ccc)
                 self.cc_area.append(ccp.area)
                 self.cc_path.append(node.path)
-                caps.append(get_cap(ccp, node.cross_section.xform))
+                cap_manager.add_object(f"{n_cc}", get_cap(ccp, node.cross_section.xform))
+                for i, conn in enumerate(ccc):
+                    conn_manager.add_object(f"{n_cc}_{n_conn + i}", conn)
+                    self.connector_cci.append(n_cc)
+                n_cc += 1
+                n_conn += len(ccc)
+
         self.connectors = np.concatenate(connectors)
+        self.connector_cci = np.array(self.connector_cci)
+        logger.info("initial connectors: %s", n_conn)
 
         # get rid of bad connectors
-        logger.info("determining connector-cut intersections")
-        intersections = np.zeros(self.connectors.shape[0], dtype=int)
-        for cap in caps:
-            dist = cap.nearest.on_surface(self.connectors["center"])[1]
-            mask = dist < self.connectors["radius"]
-            intersections[mask] += 1
-        good_connector_mask = intersections <= 1
-        self.connectors = self.connectors[good_connector_mask]
+        logger.info("removing bad connectors")
+        _, collisions = cap_manager.in_collision_other(conn_manager, return_names=True)
+        bad_con_idx = []
+        for cap, con in collisions:
+            cap_i, con_i = con.split("_")
+            if cap == cap_i:
+                continue
+            bad_con_idx.append(int(con_i))
+        good_con_mask = ~np.in1d(np.arange(self.connectors.shape[0]), bad_con_idx)
+        self.connectors = self.connectors[good_con_mask]
+        self.connector_cci = self.connector_cci[good_con_mask]
+        self.connector_locations = np.array([b.centroid for b in self.connectors])
 
         # connector stats
         self.n_connectors = self.connectors.shape[0]
@@ -234,23 +248,15 @@ class ConnectorPlacer:
         logger.info("connected components %s", len(self.cc_area))
 
         # collisions
+        new_idx = np.cumsum(good_con_mask) - 1
         self.collisions = np.zeros((self.n_connectors, self.n_connectors), dtype=bool)
-        logger.info("determining connector-connector intersections")
-        distances = np.sqrt(
-            np.sum(
-                (
-                    self.connectors["center"][:, None, :]
-                    - self.connectors["center"][None, :, :]
-                )
-                ** 2,
-                axis=2,
-            )
-        )
-        mask = (distances > 0) & (
-            distances
-            < (self.connectors["radius"][:, None] + self.connectors["radius"][None, :])
-        )
-        self.collisions = np.logical_or(self.collisions, mask)
+        logger.info("determining connector collisions")
+        _, collisions = conn_manager.in_collision_internal(return_names=True)
+        for con_a, con_b in collisions:
+            a = new_idx[int(con_a.split("_")[1])]
+            b = new_idx[int(con_b.split("_")[1])]
+            self.collisions[a, b] = True
+            self.collisions[b, a] = True
         logger.info("Done setting up connector placer")
 
     def get_initial_state(self) -> np.ndarray:
@@ -259,7 +265,7 @@ class ConnectorPlacer:
         """
         state = np.zeros(self.n_connectors, dtype=bool)
         for i in range(len(self.cc_area)):
-            mask = self.connectors["cci"] == i
+            mask = self.connector_cci == i
             idx = sample(mask)
             state[idx] = True
         return state
@@ -268,7 +274,8 @@ class ConnectorPlacer:
         """run simulated annealing to optimize placement of connectors"""
         initial_state = self.get_initial_state()
         initial_objective = evaluate_connector_objective(
-            self.connectors,
+            self.connector_locations,
+            self.connector_cci,
             self.collisions,
             self.cc_area,
             initial_state
@@ -281,12 +288,14 @@ class ConnectorPlacer:
         )
         state = sa_connector_placement(
             initial_state,
-            self.connectors,
+            self.connector_locations,
+            self.connector_cci,
             self.collisions,
             self.cc_area,
         )
         final_objective = evaluate_connector_objective(
-            self.connectors,
+            self.connector_locations,
+            self.connector_cci,
             self.collisions,
             self.cc_area,
             state
@@ -315,6 +324,7 @@ class ConnectorPlacer:
             new_tree = bsp_tree.separate_starter(tree.nodes[0].part, printer_extents)
         else:
             new_tree = bsp_tree.BSPTree(tree.nodes[0].part, printer_extents)
+
         for ni, node in enumerate(tree.nodes):
             progress.update(connector_progress=0.3 + 0.7 * (ni) / len(tree.nodes))
             if node.plane is None:
@@ -325,25 +335,15 @@ class ConnectorPlacer:
                 )
             except CcTooSmallError:
                 logger.exception("why")
+                raise
             new_node = new_tree.get_node(node.path)
             for child_node in new_node.children:
-                if child_node.positive:
-                    adj = 0
-                    op = "union"
-                else:
-                    adj = settings.CONNECTOR_TOLERANCE / 2
-                    op = "difference"
                 c_dist = child_node.part.nearest.signed_distance(
-                    self.connectors["center"]
+                    self.connector_locations
                 )
                 mask = state & (abs(c_dist) < 1.0e-3)
-                cc_conn = self.connectors[mask]
-                conn = []
-                for center, radius, *_ in cc_conn:
-                    conn.append(Sphere(radius=radius + adj, center=center))
-                conn = sum(conn)
-                
-                child_node.part = insert_connector(child_node.part, conn, op)
+                conn = sum(self.connectors[mask])
+                child_node.part = insert_connector(child_node.part, conn, "difference")
         progress.update(connector_progress=1)
         return new_tree
 

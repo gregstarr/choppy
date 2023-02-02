@@ -66,7 +66,7 @@ def get_fragility_for_normal(part: Trimesh, normal: np.ndarray, origins: np.ndar
     hits = part.ray.intersects_any(ray_origins, ray_directions)
 
     no_hit_p_fragile = ~hits[None, :] * possibly_fragile
-    close_to_plane = distances_to_plane < 1.5 * min(settings.CONNECTOR_SIZES)
+    close_to_plane = distances_to_plane < 1.5 * min(settings.CONNECTOR_SIZE)
     mask = np.any(no_hit_p_fragile * close_to_plane, axis=1)
     fragility_objective[mask] = np.inf
 

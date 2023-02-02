@@ -11,6 +11,7 @@ from pathlib import Path
 import numpy as np
 import trimesh
 from trimesh.interfaces.blender import exists
+from trimesh.primitives import Box
 
 from choppy import connector, settings, utils
 from choppy.blender_ops import decimate
@@ -68,7 +69,12 @@ def run(meshpath: Path, printer_extents: np.ndarray, name: str, output_directory
             error = exc
         else:
             # export the parts of the partitioned object
-            tree.export_stls(output_directory, name)
+            files = tree.export_stls(output_directory, name)
+            con_mesh = Box(extents=settings.CONNECTOR_SIZE)
+            con_file = Path(output_directory) / "connector.stl"
+            con_mesh.export(con_file)
+            for file in [*files, con_file]:
+                logger.info("$OUTPUT_FILE %s", file)
             logger.info("Finished")
             return
 
@@ -111,8 +117,8 @@ def main():
     """Main script: argument parsing, logging setup, run process"""
     warnings.filterwarnings("ignore")
     # Read mesh filepath from argument
-    import argparse  # pylint: disable=import-outside-toplevel
-    import sys  # pylint: disable=import-outside-toplevel
+    import argparse  # noqa
+    import sys  # noqa
 
     logger.info("Choppy called with command: %s", sys.argv)
 
@@ -126,13 +132,13 @@ def main():
     args = parser.parse_args()
 
     meshpath = Path(args.mesh)
-    if not meshpath.exists:
+    if not meshpath.exists():
         logger.error("Mesh path doesn't exist")
         sys.exit(1)
     logger.info("mesh: %s", meshpath)
 
     output_directory = Path(args.output_dir)
-    if not output_directory.exists:
+    if not output_directory.exists():
         logger.warning("output directory doesn't exist, creating")
         output_directory.mkdir()
     logger.info("output directory: %s", output_directory)

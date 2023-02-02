@@ -206,7 +206,6 @@ class BSPTree:
             symmetry=symmetry
         )
 
-
     def export_stls(self, output_dir: Path, name: str):
         """Saves all of a tree's parts
 
