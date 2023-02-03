@@ -48,7 +48,7 @@ def evaluate_connector_objective(
             dist2 = np.sum((arr1 - arr2) ** 2, axis=2)
             mask = dist2 > 0
             mask &= dist2 < (4 * connector_area)
-            ci -= np.sum(np.where(mask, (connector_area - dist2 / 4), 0))
+            ci -= np.sum(np.where(mask, connector_area - dist2 / 4, 0))
         objective += area / (settings.EMPTY_CC_PENALTY + max(0, ci))
 
     return objective
@@ -370,6 +370,7 @@ def insert_connector(part: Trimesh, connector: Trimesh, operation: str):
     utils.trimesh_repair(part)
     if operation == "union":
         new_part = part.union(connector)
+        utils.trimesh_repair(new_part)
         if new_part.volume > part.volume:
             return new_part
         check = new_part.intersection(connector)
@@ -381,6 +382,7 @@ def insert_connector(part: Trimesh, connector: Trimesh, operation: str):
             return new_part
     else:
         new_part = part.difference(connector)
+        utils.trimesh_repair(new_part)
         if new_part.volume < part.volume:
             return new_part
         check = new_part.intersection(connector)
