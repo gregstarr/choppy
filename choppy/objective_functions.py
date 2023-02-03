@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import numpy as np
 from trimesh import Trimesh
+from trimesh.intersections import mesh_plane
 
 from choppy import bsp_tree, settings
 
@@ -14,6 +15,17 @@ def evaluate_nparts_objective(trees: list[bsp_tree.BSPTree], path: tuple):
         node = tree.get_node(path)
         nparts = (sum([c.n_parts for c in node.children]) - node.n_parts) / theta_0
         tree.objectives["nparts"] += nparts
+
+
+def evaluate_orthogonality_objective(trees: list[bsp_tree.BSPTree], path: tuple):
+    for tree in trees:
+        node = tree.get_node(path)
+        origin, normal = node.plane
+        lines, face_index = mesh_plane(node.part, normal, origin, return_faces=True)
+        line_lengths = np.sqrt(np.sum(np.diff(lines, axis=1) ** 2, axis=(1, 2)))
+        weights = line_lengths / np.sum(line_lengths)
+        obj = weights @ abs(node.part.face_normals[face_index] @ normal)
+        tree.objectives["orthogonality"] = obj
 
 
 def evaluate_utilization_objective(
@@ -112,4 +124,5 @@ objectives = {
     "utilization": evaluate_utilization_objective,
     "connector": evaluate_connector_objective,
     "fragility": evaluate_fragility_objective,
+    "orthogonality": evaluate_orthogonality_objective,
 }

@@ -24,14 +24,15 @@ DIFFERENT_ORIGIN_TH = 9  # should be less than PLANE_SPACING
 DIFFERENT_ANGLE_TH = np.pi / 10
 N_RANDOM_ROTATIONS = 400
 
-# objective parameters
+# objective parameters, zeros where not implemented
 OBJECTIVE_WEIGHTS = {
     "part": 1,
     "utilization": .25,
     "connector": .1,
     "fragility": 1,
-    "seam": 0,  # set to zero until implemented
-    "symmetry": 0  # set to zero until implemented
+    "seam": 0,
+    "symmetry": 0,
+    "orthogonality": .3,
 }
 FRAGILITY_OBJECTIVE_TH = .95
 CONNECTOR_OBJECTIVE_TH = 10

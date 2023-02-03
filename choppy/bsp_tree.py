@@ -197,13 +197,15 @@ class BSPTree:
         fragility = weights["fragility"] * self.objectives["fragility"]
         seam = weights["seam"] * self.objectives["seam"]
         symmetry = weights["symmetry"] * self.objectives["symmetry"]
+        orthogonality = weights["orthogonality"] * self.objectives["orthogonality"]
         return dict(
             part=part,
             util=util,
             connector=connector,
             fragility=fragility,
             seam=seam,
-            symmetry=symmetry
+            symmetry=symmetry,
+            orthogonality=orthogonality,
         )
 
     def export_stls(self, output_dir: Path, name: str):
