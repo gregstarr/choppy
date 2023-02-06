@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Dict
 
 import numpy as np
-from trimesh import Trimesh, load, Scene
+from trimesh import Scene, Trimesh, load
 
 from choppy import objective_functions, settings, utils
 from choppy.bsp_node import BSPNode, Plane, split

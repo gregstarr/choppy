@@ -2,14 +2,11 @@
 from __future__ import annotations
 
 import numpy as np
-from shapely import contains_xy
-from shapely.affinity import rotate
 from shapely.geometry import Polygon
-from trimesh import Trimesh, transform_points
-from trimesh.creation import triangulate_polygon
+from trimesh import Trimesh
 
 from choppy import bsp_node, settings, utils
-from choppy.exceptions import CcTooSmallError, CrossSectionError, NoValidSitesError
+from choppy.exceptions import CcTooSmallError, CrossSectionError
 from choppy.logger import logger
 
 

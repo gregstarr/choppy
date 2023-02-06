@@ -4,20 +4,20 @@ import numpy as np
 from numba import jit
 from shapely import Polygon, contains_xy
 from trimesh import Trimesh, transform_points
+from trimesh.collision import CollisionManager
 from trimesh.creation import triangulate_polygon
 from trimesh.primitives import Box
-from trimesh.collision import CollisionManager
 from trimesh.transformations import rotation_matrix, translation_matrix
 
 from choppy import bsp_tree, settings, utils
-from choppy.logger import logger, progress
 from choppy.exceptions import (
-    CcTooSmallError, 
+    CcTooSmallError,
     ConnectorPlacerInputError,
     InvalidOperationError,
     NoConnectorSitesFoundError,
-    OperationFailedError
+    OperationFailedError,
 )
+from choppy.logger import logger, progress
 
 
 @jit(nopython=True)
@@ -112,7 +112,13 @@ def sa_connector_placement(
     initial_temp = objective / 2
     for temp in np.linspace(initial_temp, 0, settings.SA_ITERATIONS):
         state, objective = sa_iteration(
-            connector_locations, connector_cci, collisions, cc_area, state, objective, temp
+            connector_locations,
+            connector_cci,
+            collisions,
+            cc_area,
+            state,
+            objective,
+            temp
         )
 
     return state
@@ -216,7 +222,9 @@ class ConnectorPlacer:
                 connectors.append(ccc)
                 self.cc_area.append(ccp.area)
                 self.cc_path.append(node.path)
-                cap_manager.add_object(f"{n_cc}", get_cap(ccp, node.cross_section.xform))
+                cap_manager.add_object(
+                    f"{n_cc}", get_cap(ccp, node.cross_section.xform)
+                )
                 for i, conn in enumerate(ccc):
                     conn_manager.add_object(f"{n_cc}_{n_conn + i}", conn)
                     self.connector_cci.append(n_cc)
