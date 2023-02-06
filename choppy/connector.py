@@ -335,7 +335,6 @@ class ConnectorPlacer:
                 )
             except CcTooSmallError:
                 logger.exception("why")
-                raise
             new_node = new_tree.get_node(node.path)
             for child_node in new_node.children:
                 c_dist = child_node.part.nearest.signed_distance(

@@ -73,6 +73,7 @@ def run(meshpath: Path, printer_extents: np.ndarray, name: str, output_directory
             con_mesh = Box(extents=settings.CONNECTOR_SIZE)
             con_file = Path(output_directory) / "connector.stl"
             con_mesh.export(con_file)
+            logger.info("$N_CONNECTORS %s", state.sum())
             for file in [*files, con_file]:
                 logger.info("$OUTPUT_FILE %s", file)
             logger.info("Finished")
@@ -93,18 +94,21 @@ def prepare_starter(mesh_fn: Path, printer_extents) -> BSPTree:
     """
     # open the input mesh as the starter
     starter = trimesh.load(mesh_fn, use_pyembree=True)
-    starter.rezero()
-    utils.trimesh_repair(starter)
+    if isinstance(starter, trimesh.Scene):
+        starter = starter.dump(concatenate=True)
     n_faces = len(starter.faces)
     n_verts = len(starter.vertices)
     ratio = settings.MAX_FACES / n_faces
     logger.info("n faces %s n verts %s ratio %s", n_faces, n_verts, ratio)
     if ratio < 1:
         logger.info("decimating")
-        starter = decimate(starter, ratio)
+        starter = decimate(starter, max(.01, ratio))
+        ratio = len(starter.faces) / n_faces
         n_faces = len(starter.faces)
         n_verts = len(starter.vertices)
         logger.info("n faces %s n verts %s ratio %s", n_faces, n_verts, ratio)
+    starter.rezero()
+    utils.trimesh_repair(starter)
     # separate pieces
     if starter.body_count > 1:
         starter = separate_starter(starter, printer_extents)

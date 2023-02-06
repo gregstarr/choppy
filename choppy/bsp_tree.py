@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Dict
 
 import numpy as np
-from trimesh import Trimesh, load
+from trimesh import Trimesh, load, Scene
 
 from choppy import objective_functions, settings, utils
 from choppy.bsp_node import BSPNode, Plane, split
@@ -387,6 +387,8 @@ def open_tree(tree_file: Path, mesh_file: Path, printer_extents: np.ndarray) -> 
     node_data = data["nodes"]
 
     mesh = load(mesh_file)
+    if isinstance(mesh, Scene):
+        mesh = mesh.dump(concatenate=True)
     mesh.rezero()
     utils.trimesh_repair(mesh)
     # separate pieces
